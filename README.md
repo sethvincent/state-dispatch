@@ -24,7 +24,7 @@ npm install --save state-dispatch
 
 ## Work in progress
 
-Currently this is just a sketch of an idea. The module works, but is it a good? I guess we'll find out.
+Currently this is just a sketch of an idea. The module works, but is it good? I guess we'll find out.
 
 ## Usage example
 
@@ -85,14 +85,14 @@ The second argument is the `data`, and can be a string, number, array, or object
 
 You get access to the `send` function in three places:
 
-1. The return value of `state.start()`:
+### 1. The return value of `state.start()`:
 
 ```js
 var send = state.start()
 send('app:example' { example: true })
 ```
 
-2. As the only argument of the `initialize` function of a model:
+### 2. As the only argument of the `initialize` function of a model:
 
 ```js
 state.model({
@@ -104,7 +104,7 @@ state.model({
 })
 ```
 
-3. As the fourth argument of an action:
+### 3. As the fourth argument of an action:
 
 ```js
 state.model({
