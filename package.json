@@ -1,0 +1,37 @@
+{
+  "name": "state-dispatch",
+  "version": "0.0.0",
+  "description": "simple state management",
+  "main": "index.js",
+  "directories": {
+    "test": "tests"
+  },
+  "scripts": {
+    "test": "node tests/*.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sethvincent/state-dispatch.git"
+  },
+  "keywords": [
+    "state",
+    "\"state",
+    "management\"",
+    "store",
+    "redux",
+    "flux"
+  ],
+  "author": "sethvincent",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/sethvincent/state-dispatch/issues"
+  },
+  "homepage": "https://github.com/sethvincent/state-dispatch#readme",
+  "devDependencies": {
+    "standard": "^8.5.0",
+    "tape": "^4.6.2"
+  },
+  "dependencies": {
+    "xtend": "^4.0.1"
+  }
+}
