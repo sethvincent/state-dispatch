@@ -77,7 +77,7 @@ There are a few concepts to look at:
 
 Messages are more of a concept in state-dispatch than a specific piece of code. A message is similar to an event in an event emitter.
 
-A message has a `name` and some kind of `data`. Messages are sent using the `send` function. 
+A message has a `name` and some kind of `data`. Messages are sent using the `send` function. Sending a message triggers an `action`.
 
 The first argument of `send` is the `name`, and must be a string. The name of a message correlates to a model namespace and action name, in this format: `{model-namespace}:{action-name}`.
 
