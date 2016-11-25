@@ -1,87 +1,83 @@
 var assert = require('assert')
 var xtend = require('xtend')
 
-module.exports = function stateDispatch (hooks) {
-  hooks = hooks || {}
-  assert.equal(typeof hooks, 'object', 'state-dispatch: hooks argument must be an object')
+/**
+
+
+**/
+module.exports = function stateDispatch (options) {
+  options = options || {}
+  var hooks = options.hooks || {}
+  var update = options.update
+
+  assert.equal(typeof options, 'object', 'state-dispatch: options object is required')
+  assert.equal(typeof hooks, 'object', 'state-dispatch: options.hooks must be an object')
+  assert.equal(typeof update, 'function', 'state-dispatch', 'options.update function is required')
 
   var beforeStartHook = hooks.beforeStart || noop
+  var afterStartHook = hooks.afterStart || noop
+  var beforeSendHook = hooks.beforeSend || noop
   var beforeActionHook = hooks.beforeAction || noop
-  var stateChangeHook = hooks.stateChange || noop
+  var afterActionHook = hooks.afterAction || noop
+  var beforeStateChangeHook = hooks.beforeStateChange || noop
+  var afterStateChangeHook = hooks.afterStateChange || noop
 
-  var state = {}
-  var actions = {}
-  var initializers = []
+  var state = options.state || {}
+  var actions = options.actions || {}
+  var reducers = options.reducers || {}
+  var initialize = options.initialize
 
-  function setModel (model) {
-    assert.equal(typeof model, 'object', 'state-dispatch model: model object is required')
-    if (model.namespace) var namespace = model.namespace
-    if (model.initialize) initializers.push(model.initialize)
-  
-    if (model.state) {
-      if (namespace) state[namespace] = model.state
-      else state = xtend(state, model.state)
+  function start (opts) {
+    beforeStartHook(state)
+
+    if (initialize) {
+      initialize(send, function () {
+        afterStartHook(state)
+      })
+    } else {
+      afterStartHook(state)
     }
 
-    if (model.actions) {
-      var keys = Object.keys(model.actions)
-      var i = 0
-      var l = keys.length
-
-      for (i; i < l; i++) {
-        var actionKey = namespace ? namespace + ':' + keys[i] : keys[i]
-        var action = model.actions[keys[i]]
-        actions[actionKey] = action
-      }
-    }
+    return send
   }
 
-  function start () {
-    beforeStartHook(state, createSave())
-
-    var i = 0
-    var l = initializers.length
-
-    for (i; i < l; i++) {
-      initializers[i](send)
-    }
-  }
-
-  function createSave (name) {
-    return function save (newState) {
-      if (!newState) return
-
-      var prevState = xtend({}, state)
-
-      if (name.indexOf(':') > 0) {
-        var namespace = name.split(':')[0]
-        assert.ok(state[namespace], 'namespace ' + namespace + ' not found in state')
-        state[namespace] = xtend(state[namespace], newState)
-      } else {
-        state = xtend(state, newState)
-      }
-
-      stateChangeHook(state, prevState, name)
-    }
+  function getState () {
+    return state
   }
 
   function send (name, data, done) {
     setTimeout(function () {
-      beforeActionHook(name, data, state)
+      var prev = xtend({}, state)
+      beforeSendHook(name, data, prev)
 
-      if (actions[name]) {
-        var sendState = xtend({}, state)
-        actions[name](state, data, createSave(name), send)
-      } else {
-        // TODO: action not found error
+      var reducer = reducers[name]
+      var action = actions[name]
+
+      assert.equal(!!(reducer || action), true, 'no reducer or action found with name ' + name)
+      assert.notEqual(!!(reducer && action), true, 'reducer and action names must be unique: ' + name + ' found in both actions and reducers')
+
+      if (reducer) {
+        var changes = reducer(state, data)
+
+        if (changes) {
+          beforeStateChangeHook(name, data, prev)
+          state = xtend(state, changes)
+          afterStateChangeHook(name, data, state, prev)
+          update(state, prev, send)
+          if (done) done()
+        }
+      } else if (action) {
+        beforeActionHook(name, data, prev)
+        action(state, data, send, function () {
+          afterActionHook(name, data, state, prev)
+          if (done) done()
+        })
       }
-
-      if (done) done()
     }, 0)
   }
 
-  start.model = setModel
   start.start = start
+  start.state = getState
   return start
 }
 

@@ -1,6 +1,6 @@
 # state-dispatch
 
-Dispatch messages to manage state.
+Send messages to change state.
 
 [![npm][npm-image]][npm-url]
 [![travis][travis-image]][travis-url]
@@ -30,33 +30,36 @@ Currently this is just a sketch of an idea. The module works, but is it good? I 
 
 ```js
 var stateDispatch = require('state-dispatch')
+var xhr = require('xhr')
 
-var state = stateDispatch({
-  stateChange: function (state, prev) {
-    // render the application
-  }
-})
-
-state.model({
-  namespace: 'example',
-  state: {
-    list: [],
-    clicks: 0
-  },
-  initialize: function (send) {
-    document.body.addEventListener('click', function (e) {
-      send('example:click')
-    })
+var dispatcher = stateDispatch({
+  state: { count: 0 },
+  initialize: function (send, done) {
+    setInterval(function () {
+      send('getAmount')
+    }, 1000)
+    done()
   },
   actions: {
-    click: function (state, data, save, send) {
-      state.clicks++
-      save(state)
+    getAmount: function (state, data, send, done) {
+      xhr({ url: '/data.json', json: true }, function (err, res, body) {
+        send('increase', body.amount, done)
+      })
     }
+  },
+  reducers: {
+    increase: function (state, data) {
+      state.count += data
+      return state
+    }
+  },
+  update: function (state, prev, send) {
+    console.log('state', state)
+    console.log('prev', prev)
   }
 })
 
-state.start()
+dispatcher.start()
 ```
 
 ## About
@@ -65,213 +68,216 @@ Taking inspiration from [redux](https://npmjs.com/redux), [barracks](https://npm
 
 The goal is to be simpler than barracks but with better async & logging support than send-action.
 
-With state-dispatch you'll find some terms and concepts that are similar to approaches found in elm, redux, and choo. But things are a little bit different.
+With state-dispatch there are terms and concepts that are similar to approaches found in elm, redux, and choo. But things are a little bit different.
 
 There are a few concepts to look at:
 
-- **messages** – a message has a `name` and some `data`
-- **models** – a model has a `namespace`, `state`, `actions`, and an `initialize` function
-- **hooks** – the global state has hooks you can use for logging and storage purposes.
+- **[send](#messages--send)** – the `send` function sends `messages` to trigger state changes
+- **[messages](#messages--send)** – a message has a `name` and optionally some `data` and is sent with the `send` function. a message can trigger a `reducer` or `action`
+- **[state](#state)** – the global state object is only modified using `reducers`
+- **[reducers](#reducers)** – perform state changes. must be synchronous.
+- **[actions](#actions)** – perform async work inside `actions` that then use `send` to make state changes with reducers
+- **[initialize](#initialize)** – the `initialize` function is called when `dispatcher.start` is called and has access to the `send` function
+- **[update](#update)** – the `update` function is where we use state changes to rerender the UI of the app
+- **[hooks](#hooks)** – the global state has hooks available for logging and storage purposes.
 
-## Messages
+## Messages & `send`
 
 Messages are more of a concept in state-dispatch than a specific piece of code. A message is similar to an event in an event emitter.
 
-A message has a `name` and some kind of `data`. Messages are sent using the `send` function. Sending a message triggers an `action`.
+Messages are sent using the `send` function. Sending a message triggers a `reducer` or and `action`.
 
-The first argument of `send` is the `name`, and must be a string. The name of a message correlates to a model namespace and action name, in this format: `{model-namespace}:{action-name}`.
+A message has a `name` and optionally some kind of `data`.
 
-The second argument is the `data`, and can be a string, number, array, or object.
+The `name` of a message is a string, and refers to the name of a reducer or action.
 
-You get access to the `send` function in three places:
+The second argument is the `data`, and can be a string, number, array, or object. The `data` argument is optional.
 
-### 1. The return value of `state.start()`:
+The `send` function is accessible in three places:
+
+### 1. The return value of `dispatcher.start()`:
 
 ```js
-var send = state.start()
-send('app:example' { example: true })
+var send = dispatcher.start()
+send('example' { example: true })
 ```
 
-### 2. As the only argument of the `initialize` function of a model:
+### 2. As the first argument of the `initialize` function:
 
 ```js
-state.model({
-  namespace: 'app',
+stateDispatch({
   state: {}
-  initialize: function (send) {
-    send('app:example', { example: true })
+  initialize: function (send, done) {
+    send('example', { example: true }, done)
   }
 })
 ```
 
-### 3. As the fourth argument of an action:
+### 3. As the third argument of an action:
 
 ```js
-state.model({
-  namespace: 'app',
+stateDispatch({
   state: {}
   actions: {
-    example: function (state, data, save, send) {
-      send('otherModel:example')
-      state.example = data.example
-      save(state)
+    apiGet: function (state, data, send, done) {
+      api.get('data', function (err, data) {
+        if (err) return send('error', err)
+        send('data', data, done)
+      })
     }
   }
 }) 
 ```
 
-## Models
+## state
 
-Each model in the global state object has a `namespace`, a `state` object, an `initialize` function, and a set of `actions` that are responsible for updating the state.
+The state object can be any arbitrary data.
 
-### namespace
+## Reducers
 
-The namespace of a model must be a unique human-friendly string. Messages are prefixed with a model's namespace. The namespace is optional, though recommended.
+Reducers are similar to reducers in redux & choo.
 
-Without a namespace, the model can access the entire global state across all models. It's useful to have one app-level model to handle global changes to the app, but keep the others namespaced.
+A reducer is a function with two arguments: `state` & `data`.
 
-When a model has a namespace, that namespace acts as a prefix for referencing the model's actions.
+#### state
+The `state` argument is the current internal state of the dispatcher. This is a copy of the dispatcher's internal state, so changing this object does not update the state directly. It's possible to make changes to this object and return it to effectively update the state. The object returned by a reducer is then used to extend the internal state object of the dispatcher.
 
-### state
+#### data
+The `data` argument is the incoming data of the message used to update the state.
 
-The state object of a model can be any arbitrary data.
+## Actions
 
-### initialize
+In state-dispatch actions are for performing asynchronous tasks like fetching data from an API server.
 
-The initialize function of each model is called once after calling `state.start()`. The function is passed one argument, the model's `send` function.
+An action is a function with four arguments: `state`, `data`, `send`, `done`.
+
+#### state
+The `state` argument is the current internal state of the dispatcher. This is a copy of the internal state object, so changing this object does not update the state directly.
+
+#### data
+The `data` argument is the incoming data sent by the message that triggered the action.
+
+#### send
+The `send` argument is a function that you can use to send additional messages to trigger other actions. Using the `send` function is optional.
+
+#### done
+
+Call the `done` function when the asynchronous task is complete.
+
+#### actions example
+
+Here's an example making an API request:
+
+```js
+function getExample (state, data, save, send) {
+  apiClient.get('/example', function (err, res, body) {
+    if (err) return send('error', err)
+    send('exampleResponse', body, done)
+  })
+}
+```
+
+Note that `done` is passed in as the last argument to `send`. This is a convenient shorthand for calling the done function.
+
+These two usages are equivalent:
+
+```js
+send('exampleResponse', body, done)
+```
+
+```js
+send('exampleResponse', body)
+done()
+```
+
+## Initialize
+
+The initialize function is called once after calling `state.start()`. The function is two arguments the `send` function, and a `done` function.
+
+Similar to actions, the `done` function is used to indicate that any async tasks have completed, and can be passed in as the third argument to `send`.
 
 This lets us create ongoing processes like websockets, make an initial call to an API, or set up an event listener to handle events like clicks or keypresses.
 
 Here's an example based on setting up an event listener:
 
 ```js
-state.model({
-  namespace: 'example',
+stateDispatch({
   state: {
     list: [],
     clicks: 0
   },
-  initialize: function (send) {
+  initialize: function (send, done) {
     document.body.addEventListener('click', function (e) {
-      send('example:click')
+      send('click', done)
     })
   },
-  actions: {
+  reducers: {
     click: function (state, data, save) {
       state.clicks++
-      save(state)
+      return state
     }
   }
 })
 ```
 
-### actions
+### Update
 
-A model's actions can be considered similar to reducers in redux & choo, or commands/subscriptions in elm. If you're already familiar with redux, sorry about the naming mismatch. Check out the redux to state-dispatch migration guide for help.
+The `update` function is where we listen for changes to state, and rerender the UI of the app.
 
-An action is a function with four arguments: `state`, `data`, `save`, `send`.
-
-#### state
-The `state` argument is the current state of the model. This is a copy of the model's state, so changing this object does not update the state directly.
-
-#### data
-The `data` argument is the incoming data sent by the message that triggered the action.
-
-#### save
-The `save` argument is a callback. When you're ready, you update global state by calling `save(state)`. Using the `save` function is required in all actions.
-
-#### send
-The `send` argument is a function that you can use to send additional messages to trigger other actions. Using the `send` function is optional.
-
-Here's a basic example using the `save` function:
+Here's an example showing usage with [yo-yo](https://npmjs.org/yo-yo):
 
 ```js
-function example (state, data, save, send) {
-  state.example = data
-  save(state)
-}
+
 ```
 
-Behind the scenes, the model's state is extended with whatever you pass into `save`, so the above example is equivalent to this:
-
-```js
-function example (state, data, save, send) {
-  save({ example: data })
-}
-```
-
-Because we update state using the `save` callback, doing asynchronous operations is straightforward.
-
-Here's an example making an api request:
-
-```js
-function example (state, data, save, send) {
-  apiClient.get('example', function (err, res, body) {
-    state.example = body
-    save(state)
-  })
-}
-```
-
-You may find situations where you want to trigger other actions inside an action. You can do that by using the optional 4th argument `send` in the action:
-
-```js
-function get (state, data, save, send) {
-  send('example:request-started')
-
-  apiClient.get('example', function (err, res, body) {
-    state.example = body
-    send('example:request-finished')
-    save(state)
-  })
-}
-```
-
-What if an error occurs?
-
-Abort the action by sending a message that triggers another action in your app that handles errors:
-
-```js
-function get (state, data, save, send) {
-  send('example:request-started')
-
-  apiClient.get('example', function (err, res, body) {
-    if (err) {
-      return send('app:error', err, save)
-    }
-    state.example = body
-    send('example:request-finished')
-    save(state)
-  })
-}
-```
-
-Note that `save` is passed as the last argument to `send`. We do this because we don't want to update the state directly in this action, but still need to indicate to the model that the action has completed. `send` calls the save function without any state updates.
-
-These two usages are equivalent:
-
-```js
-if (err) {
-  return send('app:error', err, save)
-}
-```
-
-```js
-if (err) {
-  send('app:error', err)
-  return save()
-}
-```
-
-Calling the `save` function without an argument tells the model to skip this action without updating the model's state. When this occurs, this action will not cause the app to re-render.
-
-## Hooks
+### Hooks
 
 These hooks are available:
 
 - `beforeStart`
+- `afterStart`
+- `beforeSend`
 - `beforeAction`
-- `stateChange`
+- `afterAction`
+- `beforeStateChange`
+- `afterStateChange`
+
+An example with all hooks:
+
+```js
+var hooks = {
+  beforeStart: function (state) {
+    console.log(state)
+  },
+  afterStart: function (state) {
+    console.log(state)
+  },
+  beforeSend: function (name, data, state) {
+    console.log(name, data, state)
+  },
+  beforeAction: function (name, data, state) {
+    console.log(name, data, state)
+  },
+  afterAction: function (name, data, state, prev) {
+    console.log(name, data, state, prev)
+  },
+  beforeStateChange: function (name, data, state) {
+    console.log(name, data, state)
+  },
+  afterStateChange: function (name, data, state, prev) {
+    console.log(name, data, state, prev)
+  }
+}
+
+var dispatcher = stateDispatch({
+  hooks: hooks,
+  state: {},
+  reducers: {},
+  actions: {},
+  initialize: {},
+  update: function (state, prev, send) {}
+})
+```
 
 ## Contributing
 

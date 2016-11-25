@@ -1,119 +1,103 @@
 var test = require('tape')
-
 var stateDispatch = require('../index')
 
-test('set a model and send an action', function (t) {
+test('create a dispatcher and update state from initialize function', function (t) {
   t.plan(2)
-  var state = stateDispatch({
-    stateChange: function (state, prev) {
-      t.ok(state.example.example)
-      t.ok(prev.example)
-    }
-  })
 
-  state.model({
-    namespace: 'example',
-    state: {},
-    initialize: function (send) {
-      send('example:example')
+  var dispatcher = stateDispatch({
+    state: { example: false },
+    initialize: function (send, done) {
+      send('example', true, done)
     },
-    actions: {
-      example: function (state, data, save, send) {
-        save({ example: true })
+    reducers: {
+      example: function (state, data) {
+        return { example: data }
       }
-    }
-  })
-
-  state.start()
-})
-
-test('set a model without a namespace', function (t) {
-  t.plan(2)
-  var state = stateDispatch({
-    stateChange: function (state, prev) {
+    },
+    update: function (state, prev) {
       t.ok(state.example)
       t.notOk(prev.example)
     }
   })
 
-  state.model({
-    state: {},
-    initialize: function (send) {
-      send('example')
-    },
-    actions: {
-      example: function (state, data, save, send) {
-        save({ example: true })
-      }
-    }
-  })
-
-  state.start()
+  dispatcher.start()
 })
 
-test('trigger actions within an action', function (t) {
-  t.plan(3)
-
-  var state = stateDispatch({
-    stateChange: function (state, prev, name) {
-      if (name === 'example:hi') {
-        t.ok(state.example.example)
-        t.ok(state.example.hello)
-        t.ok(state.example.hi)
-      }
+test('create a dispatcher and update state from initialize function', function (t) {
+  var hooks = {
+    beforeStart: function (state) {
+      t.notOk(state.init)
+      t.notOk(state.example)
+      t.notOk(state.done)
+    },
+    afterStart: function (state) {
+      t.ok(state.init)
+      t.ok(state.example)
+      t.ok(state.done)
+    },
+    beforeSend: function (name, data, state) {
+      t.ok(name)
+      t.ok(data)
+      t.ok(state)
+    },
+    beforeAction: function (name, data, state) {
+      t.ok(name)
+      t.ok(data)
+      t.ok(state)
+    },
+    afterAction: function (name, data, state, prev) {
+      t.ok(name)
+      t.ok(data)
+      t.ok(state)
+      t.ok(prev)
+    },
+    beforeStateChange: function (name, data, state) {
+      t.ok(name)
+      t.ok(data)
+      t.ok(state)
+    },
+    afterStateChange: function (name, data, state, prev) {
+      t.ok(name)
+      t.ok(data)
+      t.ok(state)
+      t.ok(prev)
     }
-  })
+  }
 
-  state.model({
-    namespace: 'example',
+  var dispatcher = stateDispatch({
+    hooks: hooks,
     state: {},
-    initialize: function (send) {
-      send('example:example')
+    initialize: function (send, done) {
+      send('init', true, function () {
+        send('async', true, function () {
+          send('done', true, done)
+        })
+      })
     },
     actions: {
-      example: function (state, data, save, send) {
-        send('example:hello')
-        send('example:hi')
-        save({ example: true })
-      },
-      hello: function (state, data, save, send) {
-        save({ hello: true })
-      },
-      hi: function (state, data, save, send) {
-        save({ hi: true })
+      async: function (state, data, send, done) {
+        setTimeout(function () {
+          send('example', true, done)
+        }, 10)
       }
-    }
-  })
-
-  state.start()
-})
-
-test('pass save to send', function (t) {
-  t.plan(1)
-
-  var state = stateDispatch({
-    stateChange: function (state, prev, name) {
-      if (name === 'example:hello') {
-        t.ok(state.example.hello)
-      }
-    }
-  })
-
-  state.model({
-    namespace: 'example',
-    state: {},
-    initialize: function (send) {
-      send('example:example')
     },
-    actions: {
-      example: function (state, data, save, send) {
-        send('example:hello', save)
+    reducers: {
+      init: function (state, data) {
+        return { init: data }
       },
-      hello: function (state, data, save, send) {
-        save({ hello: true })
+      example: function (state, data) {
+        return { example: data }
+      },
+      done: function (state, data) {
+        return { done: data }
+      }
+    },
+    update: function (state, prev) {
+      if (state.init && state.example && state.done) {
+        t.end()
       }
     }
   })
 
-  state.start()
+  dispatcher.start()
 })
